@@ -82,6 +82,19 @@ public class User {
     }
 
     /**
+     * Gives the user a different application role.
+     *
+     * @param newRole the new role
+     * @throws BusinessRuleViolationException if the role is missing
+     */
+    public void changeRole(Role newRole) {
+        if (newRole == null) {
+            throw new BusinessRuleViolationException("Role is required");
+        }
+        this.role = newRole;
+    }
+
+    /**
      * Converts an email to the stored form: trimmed and lower-case. Use it before every
      * lookup by email so searches match regardless of capitalisation.
      *

@@ -1,0 +1,10 @@
+# Settings used by tests (profile "test"). Values here are test-only and public.
+taskforge:
+  security:
+    jwt:
+      secret: test-only-secret-not-for-production-0123456789
+    rate-limit:
+      auth-requests-per-minute: 1000
+    bootstrap-admin:
+      email: admin@test.dev
+      password: admin12345

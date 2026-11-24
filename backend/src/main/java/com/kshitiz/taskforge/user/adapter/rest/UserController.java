@@ -3,8 +3,10 @@ package com.kshitiz.taskforge.user.adapter.rest;
 import com.kshitiz.taskforge.common.adapter.rest.PageParams;
 import com.kshitiz.taskforge.common.adapter.rest.RestResponses;
 import com.kshitiz.taskforge.common.domain.PageResult;
+import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.user.application.UserService;
 import com.kshitiz.taskforge.user.application.dto.AssignManagerCommand;
+import com.kshitiz.taskforge.user.application.dto.ChangeRoleCommand;
 import com.kshitiz.taskforge.user.application.dto.CreateUserCommand;
 import com.kshitiz.taskforge.user.application.dto.UserResponse;
 import com.kshitiz.taskforge.user.domain.model.Role;
@@ -15,6 +17,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,7 +36,8 @@ import java.util.UUID;
  * REST endpoints for users. Controllers only translate HTTP to service calls; all rules
  * live in {@link UserService} and the domain.
  *
- * <p>Phase 2 moves sign-up to {@code /api/auth/register} and protects these endpoints.
+ * <p>All endpoints need a logged-in user; creating users, changing roles or managers and
+ * deleting users are for admins only ({@code @PreAuthorize}).
  */
 @RestController
 @RequestMapping("/api/users")
@@ -43,16 +48,44 @@ public class UserController {
     private final UserService userService;
 
     /**
-     * Creates a user.
+     * Creates a user with any role (admins only). Normal sign-up is
+     * {@code POST /api/auth/register}, which always creates a MEMBER.
      *
      * @param command validated request body
      * @return 201 Created with the new user and its URL in the Location header
      */
     @PostMapping
-    @Operation(summary = "Create a user")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Create a user with any role (admin)")
     public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserCommand command) {
         UserResponse created = userService.createUser(command);
         return RestResponses.created(created, "/api/users/{id}", created.id());
+    }
+
+    /**
+     * Returns the logged-in user's own profile.
+     *
+     * @param actor the logged-in user, from the access token
+     * @return the user
+     */
+    @GetMapping("/me")
+    @Operation(summary = "Get the logged-in user")
+    public UserResponse getCurrentUser(@AuthenticationPrincipal CurrentUser actor) {
+        return userService.getUser(actor.id());
+    }
+
+    /**
+     * Changes a user's role (admins only).
+     *
+     * @param id      user ID
+     * @param command the new role
+     * @return the updated user (422 if it would remove the last admin)
+     */
+    @PutMapping("/{id}/role")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Change a user's role (admin)")
+    public UserResponse changeRole(@PathVariable UUID id, @Valid @RequestBody ChangeRoleCommand command) {
+        return userService.changeRole(id, command);
     }
 
     /**
@@ -91,7 +124,8 @@ public class UserController {
      * @return the updated user
      */
     @PutMapping("/{id}/manager")
-    @Operation(summary = "Set or remove a user's manager")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Set or remove a user's manager (admin)")
     public UserResponse assignManager(@PathVariable UUID id, @RequestBody AssignManagerCommand command) {
         return userService.assignManager(id, command);
     }
@@ -115,7 +149,8 @@ public class UserController {
      * @return 204 No Content
      */
     @DeleteMapping("/{id}")
-    @Operation(summary = "Delete a user")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete a user (admin)")
     public ResponseEntity<Void> deleteUser(@PathVariable UUID id) {
         userService.deleteUser(id);
         return ResponseEntity.noContent().build();

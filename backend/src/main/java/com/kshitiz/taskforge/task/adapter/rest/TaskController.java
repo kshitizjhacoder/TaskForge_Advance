@@ -3,6 +3,7 @@ package com.kshitiz.taskforge.task.adapter.rest;
 import com.kshitiz.taskforge.common.adapter.rest.PageParams;
 import com.kshitiz.taskforge.common.adapter.rest.RestResponses;
 import com.kshitiz.taskforge.common.domain.PageResult;
+import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.task.application.TaskService;
 import com.kshitiz.taskforge.task.application.dto.ChangeTaskStatusCommand;
 import com.kshitiz.taskforge.task.application.dto.CreateTaskCommand;
@@ -18,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -33,7 +35,8 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * REST endpoints for tasks.
+ * REST endpoints for tasks. All need a logged-in user; the logged-in user ({@code actor}) is
+ * injected from the access token by {@code @AuthenticationPrincipal}.
  */
 @RestController
 @RequestMapping("/api/tasks")
@@ -44,15 +47,17 @@ public class TaskController {
     private final TaskService taskService;
 
     /**
-     * Creates a task.
+     * Creates a task owned by the logged-in user.
      *
      * @param command validated request body
+     * @param actor   the logged-in user (becomes the creator)
      * @return 201 Created with the new task and its URL in the Location header
      */
     @PostMapping
     @Operation(summary = "Create a task")
-    public ResponseEntity<TaskResponse> createTask(@Valid @RequestBody CreateTaskCommand command) {
-        TaskResponse created = taskService.createTask(command);
+    public ResponseEntity<TaskResponse> createTask(@Valid @RequestBody CreateTaskCommand command,
+                                                   @AuthenticationPrincipal CurrentUser actor) {
+        TaskResponse created = taskService.createTask(command, actor);
         return RestResponses.created(created, "/api/tasks/{id}", created.id());
     }
 
@@ -104,12 +109,14 @@ public class TaskController {
      *
      * @param id      task ID
      * @param command validated new details
-     * @return the updated task
+     * @param actor   the logged-in user
+     * @return the updated task (403 if not creator, manager or admin)
      */
     @PutMapping("/{id}")
     @Operation(summary = "Edit a task's details")
-    public TaskResponse updateTask(@PathVariable UUID id, @Valid @RequestBody UpdateTaskCommand command) {
-        return taskService.updateTask(id, command);
+    public TaskResponse updateTask(@PathVariable UUID id, @Valid @RequestBody UpdateTaskCommand command,
+                                   @AuthenticationPrincipal CurrentUser actor) {
+        return taskService.updateTask(id, command, actor);
     }
 
     /**
@@ -117,24 +124,27 @@ public class TaskController {
      *
      * @param id      task ID
      * @param command the new status
-     * @return the updated task (422 if the move is not allowed)
+     * @param actor   the logged-in user
+     * @return the updated task (422 if the move is not allowed, 403 if the user may not)
      */
     @PatchMapping("/{id}/status")
     @Operation(summary = "Change a task's status")
-    public TaskResponse changeStatus(@PathVariable UUID id, @Valid @RequestBody ChangeTaskStatusCommand command) {
-        return taskService.changeStatus(id, command);
+    public TaskResponse changeStatus(@PathVariable UUID id, @Valid @RequestBody ChangeTaskStatusCommand command,
+                                     @AuthenticationPrincipal CurrentUser actor) {
+        return taskService.changeStatus(id, command, actor);
     }
 
     /**
      * Soft-deletes a task.
      *
-     * @param id task ID
-     * @return 204 No Content
+     * @param id    task ID
+     * @param actor the logged-in user
+     * @return 204 No Content (403 if not creator, manager or admin)
      */
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a task")
-    public ResponseEntity<Void> deleteTask(@PathVariable UUID id) {
-        taskService.deleteTask(id);
+    public ResponseEntity<Void> deleteTask(@PathVariable UUID id, @AuthenticationPrincipal CurrentUser actor) {
+        taskService.deleteTask(id, actor);
         return ResponseEntity.noContent().build();
     }
 }

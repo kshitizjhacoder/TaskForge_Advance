@@ -2,6 +2,7 @@ package com.kshitiz.taskforge;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /**
  * Entry point of the TaskForge backend.
@@ -14,8 +15,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  *   <li>{@code adapter} – the outside world: REST controllers and database access.</li>
  * </ul>
  * Code reused by several features lives in {@code common}.
+ *
+ * <p>{@code @ConfigurationPropertiesScan} finds settings classes such as
+ * {@code SecurityProperties} and binds them from {@code application.yml}.
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 public class TaskForgeApplication {
 
     /**

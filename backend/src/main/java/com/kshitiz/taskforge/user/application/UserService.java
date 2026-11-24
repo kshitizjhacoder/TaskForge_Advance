@@ -6,8 +6,10 @@ import com.kshitiz.taskforge.common.exception.BusinessRuleViolationException;
 import com.kshitiz.taskforge.common.exception.DuplicateResourceException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
 import com.kshitiz.taskforge.user.application.dto.AssignManagerCommand;
+import com.kshitiz.taskforge.user.application.dto.ChangeRoleCommand;
 import com.kshitiz.taskforge.user.application.dto.CreateUserCommand;
 import com.kshitiz.taskforge.user.application.dto.UserResponse;
+import com.kshitiz.taskforge.user.domain.model.Role;
 import com.kshitiz.taskforge.user.domain.model.User;
 import com.kshitiz.taskforge.user.domain.model.UserSearchCriteria;
 import com.kshitiz.taskforge.user.domain.port.UserRepository;
@@ -103,6 +105,26 @@ public class UserService {
     }
 
     /**
+     * Changes a user's application role (admins only; enforced in the controller).
+     *
+     * @param userId  the user whose role changes
+     * @param command the new role
+     * @return the updated user
+     * @throws ResourceNotFoundException      if the user does not exist
+     * @throws BusinessRuleViolationException if this would remove the last admin
+     */
+    @Transactional
+    public UserResponse changeRole(UUID userId, ChangeRoleCommand command) {
+        User user = loadUser(userId);
+        if (user.getRole() == Role.ADMIN && command.role() != Role.ADMIN) {
+            ensureAnotherAdminRemains();
+        }
+        user.changeRole(command.role());
+        log.info("User {} role changed to {}", userId, command.role());
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    /**
      * Lists the users who report directly to a manager.
      *
      * @param managerId the manager's ID
@@ -120,11 +142,15 @@ public class UserService {
      * Soft-deletes a user. Anyone who reported to them is left without a manager.
      *
      * @param id user ID
-     * @throws ResourceNotFoundException if no such user exists
+     * @throws ResourceNotFoundException      if no such user exists
+     * @throws BusinessRuleViolationException if this is the last admin
      */
     @Transactional
     public void deleteUser(UUID id) {
-        loadUser(id);
+        User user = loadUser(id);
+        if (user.getRole() == Role.ADMIN) {
+            ensureAnotherAdminRemains();
+        }
         userRepository.clearManager(id);
         userRepository.deleteById(id);
         log.info("Deleted user {}", id);
@@ -150,6 +176,18 @@ public class UserService {
     private User loadUser(UUID id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("User", id));
+    }
+
+    /**
+     * Stops an action that would leave the system without any admin (nobody could then
+     * manage users or roles).
+     *
+     * @throws BusinessRuleViolationException if there is only one admin
+     */
+    private void ensureAnotherAdminRemains() {
+        if (userRepository.countByRole(Role.ADMIN) <= 1) {
+            throw new BusinessRuleViolationException("The last admin cannot be removed or demoted");
+        }
     }
 
     /**

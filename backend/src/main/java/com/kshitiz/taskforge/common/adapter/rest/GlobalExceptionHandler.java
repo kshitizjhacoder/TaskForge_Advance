@@ -1,7 +1,9 @@
 package com.kshitiz.taskforge.common.adapter.rest;
 
+import com.kshitiz.taskforge.common.exception.AuthenticationFailedException;
 import com.kshitiz.taskforge.common.exception.BusinessRuleViolationException;
 import com.kshitiz.taskforge.common.exception.DuplicateResourceException;
+import com.kshitiz.taskforge.common.exception.ForbiddenOperationException;
 import com.kshitiz.taskforge.common.exception.InvalidRequestException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +15,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -82,6 +85,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidRequestException.class)
     public ProblemDetail handleInvalidRequest(InvalidRequestException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    /**
+     * Wrong credentials or an invalid token → 401 Unauthorized.
+     *
+     * @param ex the exception thrown by the auth service
+     * @return problem detail with a deliberately vague message
+     */
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ProblemDetail handleAuthenticationFailed(AuthenticationFailedException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    /**
+     * The user is logged in but not allowed to do this → 403 Forbidden. Covers both our own
+     * ownership checks ({@link ForbiddenOperationException}) and Spring's role checks from
+     * {@code @PreAuthorize} ({@link AccessDeniedException}).
+     *
+     * @param ex the exception thrown by a service or by method security
+     * @return problem detail explaining the refusal
+     */
+    @ExceptionHandler({ForbiddenOperationException.class, AccessDeniedException.class})
+    public ProblemDetail handleForbidden(Exception ex) {
+        String detail = ex instanceof ForbiddenOperationException
+                ? ex.getMessage()
+                : "You do not have permission to perform this action.";
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, detail);
     }
 
     /**

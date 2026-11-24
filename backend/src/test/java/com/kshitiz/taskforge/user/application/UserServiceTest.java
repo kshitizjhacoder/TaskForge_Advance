@@ -4,6 +4,7 @@ import com.kshitiz.taskforge.common.exception.BusinessRuleViolationException;
 import com.kshitiz.taskforge.common.exception.DuplicateResourceException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
 import com.kshitiz.taskforge.user.application.dto.AssignManagerCommand;
+import com.kshitiz.taskforge.user.application.dto.ChangeRoleCommand;
 import com.kshitiz.taskforge.user.application.dto.CreateUserCommand;
 import com.kshitiz.taskforge.user.application.dto.UserResponse;
 import com.kshitiz.taskforge.user.domain.model.Role;
@@ -91,6 +92,22 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.assignManager(b, new AssignManagerCommand(a)))
                 .isInstanceOf(BusinessRuleViolationException.class)
                 .hasMessageContaining("loop");
+    }
+
+    @Test
+    void lastAdminCannotBeDemoted() {
+        UUID adminId = UUID.randomUUID();
+        User admin = User.restore().id(adminId).fullName("Admin").email("admin@test.dev")
+                .passwordHash("hash").role(Role.ADMIN).build();
+        when(userRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(userRepository.countByRole(Role.ADMIN)).thenReturn(1L);
+
+        assertThatThrownBy(() -> userService.changeRole(adminId, new ChangeRoleCommand(Role.MEMBER)))
+                .isInstanceOf(BusinessRuleViolationException.class)
+                .hasMessageContaining("last admin");
+        assertThatThrownBy(() -> userService.deleteUser(adminId))
+                .isInstanceOf(BusinessRuleViolationException.class);
+        verify(userRepository, never()).deleteById(any());
     }
 
     @Test

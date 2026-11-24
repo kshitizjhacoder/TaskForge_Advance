@@ -3,6 +3,7 @@ package com.kshitiz.taskforge.user.adapter.persistence;
 import com.kshitiz.taskforge.common.adapter.persistence.PageRequests;
 import com.kshitiz.taskforge.common.domain.PageQuery;
 import com.kshitiz.taskforge.common.domain.PageResult;
+import com.kshitiz.taskforge.user.domain.model.Role;
 import com.kshitiz.taskforge.user.domain.model.User;
 import com.kshitiz.taskforge.user.domain.model.UserSearchCriteria;
 import com.kshitiz.taskforge.user.domain.port.UserRepository;
@@ -45,6 +46,18 @@ public class UserPersistenceAdapter implements UserRepository {
     @Override
     public Optional<User> findById(UUID id) {
         return jpaRepository.findById(id).map(mapper::toDomain);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public Optional<User> findByEmail(String email) {
+        return jpaRepository.findByEmail(email).map(mapper::toDomain);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public long countByRole(Role role) {
+        return jpaRepository.countByRole(role);
     }
 
     /** {@inheritDoc} */
