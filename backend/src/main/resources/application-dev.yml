@@ -3,3 +3,13 @@ logging:
   level:
     com.kshitiz.taskforge: DEBUG
     org.hibernate.SQL: DEBUG
+
+# Development-only defaults so the app starts without extra setup.
+# These values are public; NEVER use them outside a local machine.
+taskforge:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev-only-secret-not-for-production-0123456789}
+    bootstrap-admin:
+      email: ${ADMIN_EMAIL:admin@taskforge.local}
+      password: ${ADMIN_PASSWORD:admin12345}

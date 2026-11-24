@@ -1,6 +1,7 @@
 package com.kshitiz.taskforge.task.adapter.rest;
 
 import com.kshitiz.taskforge.common.adapter.rest.RestResponses;
+import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.task.application.TaskCommentService;
 import com.kshitiz.taskforge.task.application.dto.AddCommentCommand;
 import com.kshitiz.taskforge.task.application.dto.CommentResponse;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,14 +39,16 @@ public class TaskCommentController {
      * Adds a comment to a task.
      *
      * @param taskId  task ID
-     * @param command author and text
+     * @param command comment text
+     * @param actor   the logged-in user (becomes the author)
      * @return 201 Created with the new comment
      */
     @PostMapping("/api/tasks/{taskId}/comments")
     @Operation(summary = "Comment on a task")
     public ResponseEntity<CommentResponse> addComment(@PathVariable UUID taskId,
-                                                      @Valid @RequestBody AddCommentCommand command) {
-        CommentResponse created = commentService.addComment(taskId, command);
+                                                      @Valid @RequestBody AddCommentCommand command,
+                                                      @AuthenticationPrincipal CurrentUser actor) {
+        CommentResponse created = commentService.addComment(taskId, command, actor);
         return RestResponses.created(created, "/api/comments/{id}", created.id());
     }
 
@@ -65,24 +69,27 @@ public class TaskCommentController {
      *
      * @param id      comment ID
      * @param command new text
-     * @return the updated comment
+     * @param actor   the logged-in user
+     * @return the updated comment (403 if not the author)
      */
     @PutMapping("/api/comments/{id}")
     @Operation(summary = "Edit a comment")
-    public CommentResponse editComment(@PathVariable UUID id, @Valid @RequestBody EditCommentCommand command) {
-        return commentService.editComment(id, command);
+    public CommentResponse editComment(@PathVariable UUID id, @Valid @RequestBody EditCommentCommand command,
+                                       @AuthenticationPrincipal CurrentUser actor) {
+        return commentService.editComment(id, command, actor);
     }
 
     /**
      * Soft-deletes a comment.
      *
-     * @param id comment ID
-     * @return 204 No Content
+     * @param id    comment ID
+     * @param actor the logged-in user
+     * @return 204 No Content (403 if neither author nor admin)
      */
     @DeleteMapping("/api/comments/{id}")
     @Operation(summary = "Delete a comment")
-    public ResponseEntity<Void> deleteComment(@PathVariable UUID id) {
-        commentService.deleteComment(id);
+    public ResponseEntity<Void> deleteComment(@PathVariable UUID id, @AuthenticationPrincipal CurrentUser actor) {
+        commentService.deleteComment(id, actor);
         return ResponseEntity.noContent().build();
     }
 }

@@ -6,7 +6,10 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.kshitiz.taskforge.user.domain.model.Role;
+
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -16,6 +19,22 @@ import java.util.UUID;
  */
 public interface UserJpaRepository extends JpaRepository<UserJpaEntity, UUID>,
         JpaSpecificationExecutor<UserJpaEntity> {
+
+    /**
+     * Finds a user by email.
+     *
+     * @param email normalised email
+     * @return the user, or empty
+     */
+    Optional<UserJpaEntity> findByEmail(String email);
+
+    /**
+     * Counts users with a role.
+     *
+     * @param role role to count
+     * @return number of non-deleted users with that role
+     */
+    long countByRole(Role role);
 
     /**
      * Checks whether an email is already used.

@@ -2,16 +2,19 @@ package com.kshitiz.taskforge.task.application;
 
 import com.kshitiz.taskforge.common.domain.PageQuery;
 import com.kshitiz.taskforge.common.domain.PageResult;
+import com.kshitiz.taskforge.common.exception.ForbiddenOperationException;
 import com.kshitiz.taskforge.common.exception.InvalidRequestException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
+import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.task.application.dto.ChangeTaskStatusCommand;
 import com.kshitiz.taskforge.task.application.dto.CreateTaskCommand;
 import com.kshitiz.taskforge.task.application.dto.TaskResponse;
 import com.kshitiz.taskforge.task.application.dto.UpdateTaskCommand;
 import com.kshitiz.taskforge.task.domain.model.Task;
 import com.kshitiz.taskforge.task.domain.model.TaskSearchCriteria;
+import com.kshitiz.taskforge.task.domain.policy.TaskAccessPolicy;
+import com.kshitiz.taskforge.task.domain.port.TaskAssignmentRepository;
 import com.kshitiz.taskforge.task.domain.port.TaskRepository;
-import com.kshitiz.taskforge.user.application.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,8 +25,10 @@ import java.util.UUID;
 /**
  * Use cases for tasks: create, read, search, edit, change status and delete.
  *
- * <p>The rules themselves (valid dates, allowed status moves, tag limits) live in the
- * {@link Task} domain object; this service loads, calls the domain, and saves.
+ * <p>Business rules (valid dates, allowed status moves, tag limits) live in the {@link Task}
+ * domain object and permission rules in {@link TaskAccessPolicy}; this service loads data,
+ * applies both, and saves. Methods that change data receive the logged-in user
+ * ({@code actor}).
  */
 @Slf4j
 @Service
@@ -32,22 +37,21 @@ import java.util.UUID;
 public class TaskService {
 
     private final TaskRepository taskRepository;
-    private final UserService userService;
+    private final TaskAssignmentRepository assignmentRepository;
 
     /**
-     * Creates a task in status TO_DO.
+     * Creates a task in status TO_DO, owned by the logged-in user.
      *
      * @param command validated request data
+     * @param actor   the logged-in user, recorded as the creator
      * @return the created task
-     * @throws ResourceNotFoundException if the creator does not exist
      */
     @Transactional
-    public TaskResponse createTask(CreateTaskCommand command) {
-        userService.ensureUserExists(command.createdBy());
-        Task task = Task.create(command.projectId(), command.title(), command.description(), command.createdBy(),
+    public TaskResponse createTask(CreateTaskCommand command, CurrentUser actor) {
+        Task task = Task.create(command.projectId(), command.title(), command.description(), actor.id(),
                 command.startDate(), command.endDate(), command.priority(), command.tags());
         Task saved = taskRepository.save(task);
-        log.info("Created task {}", saved.getId());
+        log.info("User {} created task {}", actor.id(), saved.getId());
         return TaskResponse.from(saved);
     }
 
@@ -82,12 +86,14 @@ public class TaskService {
      *
      * @param id      task ID
      * @param command validated new details
+     * @param actor   the logged-in user
      * @return the updated task
-     * @throws ResourceNotFoundException if no such task exists
+     * @throws ResourceNotFoundException   if no such task exists
+     * @throws ForbiddenOperationException if the user may not manage this task
      */
     @Transactional
-    public TaskResponse updateTask(UUID id, UpdateTaskCommand command) {
-        Task task = loadTask(id);
+    public TaskResponse updateTask(UUID id, UpdateTaskCommand command, CurrentUser actor) {
+        Task task = loadManageableTask(id, actor);
         task.updateDetails(command.title(), command.description(), command.startDate(), command.endDate(),
                 command.priority(), command.tags());
         return TaskResponse.from(taskRepository.save(task));
@@ -98,34 +104,38 @@ public class TaskService {
      *
      * @param id      task ID
      * @param command the requested status
+     * @param actor   the logged-in user
      * @return the updated task
-     * @throws ResourceNotFoundException if no such task exists
+     * @throws ResourceNotFoundException   if no such task exists
+     * @throws ForbiddenOperationException if the user is not creator, assignee, manager or admin
      */
     @Transactional
-    public TaskResponse changeStatus(UUID id, ChangeTaskStatusCommand command) {
+    public TaskResponse changeStatus(UUID id, ChangeTaskStatusCommand command, CurrentUser actor) {
         Task task = loadTask(id);
+        TaskAccessPolicy.requireCanChangeStatus(task, actor, assignmentRepository.exists(id, actor.id()));
         task.changeStatus(command.status());
         Task saved = taskRepository.save(task);
-        log.info("Task {} moved to {}", id, saved.getStatus());
+        log.info("User {} moved task {} to {}", actor.id(), id, saved.getStatus());
         return TaskResponse.from(saved);
     }
 
     /**
      * Soft-deletes a task.
      *
-     * @param id task ID
-     * @throws ResourceNotFoundException if no such task exists
+     * @param id    task ID
+     * @param actor the logged-in user
+     * @throws ResourceNotFoundException   if no such task exists
+     * @throws ForbiddenOperationException if the user may not manage this task
      */
     @Transactional
-    public void deleteTask(UUID id) {
-        ensureTaskExists(id);
+    public void deleteTask(UUID id, CurrentUser actor) {
+        loadManageableTask(id, actor);
         taskRepository.deleteById(id);
-        log.info("Deleted task {}", id);
+        log.info("User {} deleted task {}", actor.id(), id);
     }
 
     /**
-     * Checks that a task exists. Used by the comment and assignment services before they
-     * attach anything to a task.
+     * Checks that a task exists. Used before attaching comments to a task.
      *
      * @param id task ID
      * @throws ResourceNotFoundException if no such task exists
@@ -134,6 +144,22 @@ public class TaskService {
         if (!taskRepository.existsById(id)) {
             throw ResourceNotFoundException.of("Task", id);
         }
+    }
+
+    /**
+     * Checks that a task exists and that the user may manage it (edit, delete, assign).
+     * Shared with {@link TaskAssignmentService} so the rule is applied the same way.
+     *
+     * @param id    task ID
+     * @param actor the logged-in user
+     * @return the task
+     * @throws ResourceNotFoundException   if no such task exists
+     * @throws ForbiddenOperationException if the user may not manage it
+     */
+    Task loadManageableTask(UUID id, CurrentUser actor) {
+        Task task = loadTask(id);
+        TaskAccessPolicy.requireCanManage(task, actor);
+        return task;
     }
 
     /**

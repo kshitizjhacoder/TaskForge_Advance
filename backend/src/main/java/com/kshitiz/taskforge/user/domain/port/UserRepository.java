@@ -2,6 +2,7 @@ package com.kshitiz.taskforge.user.domain.port;
 
 import com.kshitiz.taskforge.common.domain.PageQuery;
 import com.kshitiz.taskforge.common.domain.PageResult;
+import com.kshitiz.taskforge.user.domain.model.Role;
 import com.kshitiz.taskforge.user.domain.model.User;
 import com.kshitiz.taskforge.user.domain.model.UserSearchCriteria;
 
@@ -30,6 +31,22 @@ public interface UserRepository {
      * @return the user, or empty if not found
      */
     Optional<User> findById(UUID id);
+
+    /**
+     * Finds a user by email (used at login).
+     *
+     * @param email normalised email
+     * @return the user, or empty if not found
+     */
+    Optional<User> findByEmail(String email);
+
+    /**
+     * Counts users with a role. Used to make sure at least one admin always remains.
+     *
+     * @param role role to count
+     * @return number of (non-deleted) users with that role
+     */
+    long countByRole(Role role);
 
     /**
      * Checks whether an email is already taken.
