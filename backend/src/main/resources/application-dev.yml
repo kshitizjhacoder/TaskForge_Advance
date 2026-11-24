@@ -1,0 +1,5 @@
+# Local development overrides: verbose logging for our code and SQL statements.
+logging:
+  level:
+    com.kshitiz.taskforge: DEBUG
+    org.hibernate.SQL: DEBUG

@@ -1,0 +1,11 @@
+# Production overrides: quiet logs, no API explorer exposed by default.
+logging:
+  level:
+    root: INFO
+    com.kshitiz.taskforge: INFO
+
+springdoc:
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}

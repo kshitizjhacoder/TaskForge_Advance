@@ -1,0 +1,22 @@
+# Secrets: never commit real credentials
+.env
+*.env.local
+
+# Build output
+target/
+build/
+dist/
+node_modules/
+
+# Logs
+*.log
+
+# IDE / OS files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Uploaded files stored locally in development
+uploads/

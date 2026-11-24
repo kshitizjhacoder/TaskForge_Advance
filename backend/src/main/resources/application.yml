@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------------
+# TaskForge base configuration.
+# Every secret comes from an environment variable; nothing sensitive lives here.
+# Profile-specific overrides: application-dev.yml, application-prod.yml.
+# ---------------------------------------------------------------------------
+spring:
+  application:
+    name: taskforge
+  profiles:
+    default: dev
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/taskforge?createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:taskforge}
+    password: ${DB_PASSWORD:}
+
+  jpa:
+    # Never hold a DB connection open while rendering the HTTP response
+    open-in-view: false
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that entities match it
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        type:
+          # Store java.time.Instant in DATETIME(6) columns (always UTC)
+          preferred_instant_jdbc_type: TIMESTAMP
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  cache:
+    cache-names: master-data
+
+server:
+  port: ${PORT:8080}
+  error:
+    # Never leak stack traces or exception messages in error responses
+    include-stacktrace: never
+    include-message: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
