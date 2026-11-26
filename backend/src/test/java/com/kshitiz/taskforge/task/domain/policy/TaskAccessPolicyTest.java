@@ -3,6 +3,7 @@ package com.kshitiz.taskforge.task.domain.policy;
 import com.kshitiz.taskforge.common.exception.ForbiddenOperationException;
 import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.task.domain.model.Task;
+import com.kshitiz.taskforge.task.domain.model.TaskAttachment;
 import com.kshitiz.taskforge.task.domain.model.TaskComment;
 import com.kshitiz.taskforge.user.domain.model.Role;
 import org.junit.jupiter.api.Test;
@@ -17,12 +18,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class TaskAccessPolicyTest {
 
+    private static final boolean OWNER = true;
+    private static final boolean NOT_OWNER = false;
+
     private final CurrentUser creator = user(Role.MEMBER);
     private final CurrentUser otherMember = user(Role.MEMBER);
     private final CurrentUser manager = user(Role.MANAGER);
     private final CurrentUser admin = user(Role.ADMIN);
-    private final Task task = Task.create(null, "Task", null, creator.id(), null, null, null, null);
+    private final Task task = Task.create(UUID.randomUUID(), "Task", null, creator.id(), null, null, null, null);
     private final TaskComment comment = TaskComment.write(task.getId(), creator.id(), "Hello");
+    private final TaskAttachment attachment =
+            TaskAttachment.upload(task.getId(), "notes.txt", "text/plain", 10, otherMember.id());
 
     /** Creates a logged-in user with a random ID. */
     private static CurrentUser user(Role role) {
@@ -31,20 +37,24 @@ class TaskAccessPolicyTest {
 
     @Test
     void manageTask() {
-        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, creator)).doesNotThrowAnyException();
-        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, manager)).doesNotThrowAnyException();
-        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, admin)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> TaskAccessPolicy.requireCanManage(task, otherMember))
+        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, creator, NOT_OWNER)).doesNotThrowAnyException();
+        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, manager, NOT_OWNER)).doesNotThrowAnyException();
+        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, admin, NOT_OWNER)).doesNotThrowAnyException();
+        assertThatCode(() -> TaskAccessPolicy.requireCanManage(task, otherMember, OWNER))
+                .as("the project owner manages every task in the project").doesNotThrowAnyException();
+        assertThatThrownBy(() -> TaskAccessPolicy.requireCanManage(task, otherMember, NOT_OWNER))
                 .isInstanceOf(ForbiddenOperationException.class);
     }
 
     @Test
     void changeStatus() {
-        assertThatCode(() -> TaskAccessPolicy.requireCanChangeStatus(task, otherMember, true))
+        assertThatCode(() -> TaskAccessPolicy.requireCanChangeStatus(task, otherMember, true, NOT_OWNER))
                 .as("an assignee may change status").doesNotThrowAnyException();
-        assertThatCode(() -> TaskAccessPolicy.requireCanChangeStatus(task, creator, false)).doesNotThrowAnyException();
-        assertThatCode(() -> TaskAccessPolicy.requireCanChangeStatus(task, manager, false)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> TaskAccessPolicy.requireCanChangeStatus(task, otherMember, false))
+        assertThatCode(() -> TaskAccessPolicy.requireCanChangeStatus(task, creator, false, NOT_OWNER))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> TaskAccessPolicy.requireCanChangeStatus(task, otherMember, false, OWNER))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> TaskAccessPolicy.requireCanChangeStatus(task, otherMember, false, NOT_OWNER))
                 .isInstanceOf(ForbiddenOperationException.class);
     }
 
@@ -61,6 +71,19 @@ class TaskAccessPolicyTest {
         assertThatCode(() -> TaskAccessPolicy.requireCanDeleteComment(comment, creator)).doesNotThrowAnyException();
         assertThatCode(() -> TaskAccessPolicy.requireCanDeleteComment(comment, admin)).doesNotThrowAnyException();
         assertThatThrownBy(() -> TaskAccessPolicy.requireCanDeleteComment(comment, manager))
+                .isInstanceOf(ForbiddenOperationException.class);
+    }
+
+    @Test
+    void deleteAttachmentIsUploaderOrTaskManager() {
+        CurrentUser uploader = new CurrentUser(attachment.getUploadedBy(), "up@test.dev", Role.MEMBER);
+        CurrentUser stranger = user(Role.MEMBER);
+
+        assertThatCode(() -> TaskAccessPolicy.requireCanDeleteAttachment(attachment, task, uploader, NOT_OWNER))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> TaskAccessPolicy.requireCanDeleteAttachment(attachment, task, creator, NOT_OWNER))
+                .as("the task creator may clean up files").doesNotThrowAnyException();
+        assertThatThrownBy(() -> TaskAccessPolicy.requireCanDeleteAttachment(attachment, task, stranger, NOT_OWNER))
                 .isInstanceOf(ForbiddenOperationException.class);
     }
 }

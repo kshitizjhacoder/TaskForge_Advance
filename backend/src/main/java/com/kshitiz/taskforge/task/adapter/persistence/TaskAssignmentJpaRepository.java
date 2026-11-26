@@ -1,6 +1,7 @@
 package com.kshitiz.taskforge.task.adapter.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -22,17 +23,17 @@ public interface TaskAssignmentJpaRepository
     List<TaskAssignmentJpaEntity> findByTaskIdOrderByAssignedAtAsc(UUID taskId);
 
     /**
-     * Lists a user's assignments, skipping tasks that have been deleted (the join to
-     * {@code TaskJpaEntity} applies its soft-delete filter).
+     * Deletes a user's assignments on all tasks of a project, in one statement.
      *
-     * @param userId user ID
-     * @return assignments on existing tasks, newest first
+     * @param projectId project ID
+     * @param userId    user ID
+     * @return number of rows deleted
      */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
-            select a from TaskAssignmentJpaEntity a
+            delete from TaskAssignmentJpaEntity a
             where a.userId = :userId
-              and exists (select t.id from TaskJpaEntity t where t.id = a.taskId)
-            order by a.assignedAt desc
+              and a.taskId in (select t.id from TaskJpaEntity t where t.projectId = :projectId)
             """)
-    List<TaskAssignmentJpaEntity> findActiveByUserId(@Param("userId") UUID userId);
+    int deleteByProjectAndUser(@Param("projectId") UUID projectId, @Param("userId") UUID userId);
 }

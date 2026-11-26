@@ -17,8 +17,9 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Use cases for task comments: add, list, edit and delete. Only the author may edit a
- * comment; the author or an admin may delete it (see {@link TaskAccessPolicy}).
+ * Use cases for task comments: add, list, edit and delete. The user must be able to see the
+ * task's project; only the author may edit a comment, and the author or an admin may delete
+ * it (see {@link TaskAccessPolicy}).
  */
 @Service
 @RequiredArgsConstructor
@@ -35,11 +36,11 @@ public class TaskCommentService {
      * @param command comment text
      * @param actor   the logged-in user, recorded as the author
      * @return the created comment
-     * @throws ResourceNotFoundException if the task does not exist
+     * @throws ResourceNotFoundException if the task is not found or not visible
      */
     @Transactional
     public CommentResponse addComment(UUID taskId, AddCommentCommand command, CurrentUser actor) {
-        taskService.ensureTaskExists(taskId);
+        taskService.loadAccessibleTask(taskId, actor);
         TaskComment comment = TaskComment.write(taskId, actor.id(), command.content());
         return CommentResponse.from(commentRepository.save(comment));
     }
@@ -48,11 +49,12 @@ public class TaskCommentService {
      * Lists the comments on a task, oldest first.
      *
      * @param taskId task ID
+     * @param actor  the logged-in user
      * @return comments
-     * @throws ResourceNotFoundException if the task does not exist
+     * @throws ResourceNotFoundException if the task is not found or not visible
      */
-    public List<CommentResponse> listComments(UUID taskId) {
-        taskService.ensureTaskExists(taskId);
+    public List<CommentResponse> listComments(UUID taskId, CurrentUser actor) {
+        taskService.loadAccessibleTask(taskId, actor);
         return commentRepository.findByTaskId(taskId).stream()
                 .map(CommentResponse::from)
                 .toList();
@@ -65,12 +67,12 @@ public class TaskCommentService {
      * @param command   new text
      * @param actor     the logged-in user
      * @return the updated comment
-     * @throws ResourceNotFoundException   if the comment does not exist
+     * @throws ResourceNotFoundException   if the comment is not found or not visible
      * @throws ForbiddenOperationException if the user is not the author
      */
     @Transactional
     public CommentResponse editComment(UUID commentId, EditCommentCommand command, CurrentUser actor) {
-        TaskComment comment = loadComment(commentId);
+        TaskComment comment = loadAccessibleComment(commentId, actor);
         TaskAccessPolicy.requireCanEditComment(comment, actor);
         comment.edit(command.content());
         return CommentResponse.from(commentRepository.save(comment));
@@ -81,22 +83,26 @@ public class TaskCommentService {
      *
      * @param commentId comment ID
      * @param actor     the logged-in user
-     * @throws ResourceNotFoundException   if the comment does not exist
+     * @throws ResourceNotFoundException   if the comment is not found or not visible
      * @throws ForbiddenOperationException if the user is neither the author nor an admin
      */
     @Transactional
     public void deleteComment(UUID commentId, CurrentUser actor) {
-        TaskAccessPolicy.requireCanDeleteComment(loadComment(commentId), actor);
+        TaskAccessPolicy.requireCanDeleteComment(loadAccessibleComment(commentId, actor), actor);
         commentRepository.deleteById(commentId);
     }
 
     /**
-     * Loads a comment or throws 404.
+     * Loads a comment and checks the user may see its task's project.
      *
-     * @param id comment ID
+     * @param id    comment ID
+     * @param actor the logged-in user
      * @return the comment
      */
-    private TaskComment loadComment(UUID id) {
-        return commentRepository.findById(id).orElseThrow(() -> ResourceNotFoundException.of("Comment", id));
+    private TaskComment loadAccessibleComment(UUID id, CurrentUser actor) {
+        TaskComment comment = commentRepository.findById(id)
+                .orElseThrow(() -> ResourceNotFoundException.of("Comment", id));
+        taskService.loadAccessibleTask(comment.getTaskId(), actor);
+        return comment;
     }
 }

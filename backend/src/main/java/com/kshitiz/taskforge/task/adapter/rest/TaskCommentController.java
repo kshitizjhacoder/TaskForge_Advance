@@ -56,12 +56,13 @@ public class TaskCommentController {
      * Lists a task's comments, oldest first.
      *
      * @param taskId task ID
+     * @param actor  the logged-in user
      * @return comments
      */
     @GetMapping("/api/tasks/{taskId}/comments")
     @Operation(summary = "List a task's comments")
-    public List<CommentResponse> listComments(@PathVariable UUID taskId) {
-        return commentService.listComments(taskId);
+    public List<CommentResponse> listComments(@PathVariable UUID taskId, @AuthenticationPrincipal CurrentUser actor) {
+        return commentService.listComments(taskId, actor);
     }
 
     /**

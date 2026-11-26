@@ -2,6 +2,7 @@ package com.kshitiz.taskforge.common.adapter.persistence;
 
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Collection;
 import java.util.Locale;
 
 /**
@@ -30,6 +31,25 @@ public final class Specs {
             return null;
         }
         return (root, query, cb) -> cb.equal(root.get(field), value);
+    }
+
+    /**
+     * {@code field IN (values)}. An empty list matches nothing (e.g. a user in no projects
+     * sees no tasks), which is different from {@code null} (no filter).
+     *
+     * @param field  entity property name
+     * @param values allowed values, or {@code null} for no filter
+     * @param <T>    entity type
+     * @return the condition, or {@code null}
+     */
+    public static <T> Specification<T> in(String field, Collection<?> values) {
+        if (values == null) {
+            return null;
+        }
+        if (values.isEmpty()) {
+            return (root, query, cb) -> cb.disjunction();
+        }
+        return (root, query, cb) -> root.get(field).in(values);
     }
 
     /**

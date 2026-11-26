@@ -35,6 +35,12 @@ spring:
   cache:
     cache-names: master-data
 
+  servlet:
+    multipart:
+      # Hard limits for uploads; must be at least taskforge.attachments.max-file-size
+      max-file-size: 10MB
+      max-request-size: 11MB
+
 taskforge:
   security:
     jwt:
@@ -54,6 +60,39 @@ taskforge:
       email: ${ADMIN_EMAIL:}
       password: ${ADMIN_PASSWORD:}
       full-name: ${ADMIN_FULL_NAME:TaskForge Admin}
+
+  storage:
+    s3:
+      # S3-compatible endpoint: MinIO locally (http://localhost:9000), Cloudflare R2 or AWS S3 when deployed.
+      # Leave empty to use the AWS default endpoint for the region.
+      endpoint: ${S3_ENDPOINT:}
+      region: ${S3_REGION:auto}
+      bucket: ${S3_BUCKET:taskforge-attachments}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      # MinIO needs path-style URLs (http://host/bucket/key)
+      path-style-access: ${S3_PATH_STYLE:true}
+      # Create the bucket at startup if it doesn't exist (handy for local MinIO)
+      create-bucket-if-missing: ${S3_CREATE_BUCKET:false}
+
+  attachments:
+    # Larger uploads are rejected with 413 (see spring.servlet.multipart below)
+    max-file-size: 10MB
+    allowed-content-types:
+      - image/png
+      - image/jpeg
+      - image/gif
+      - image/webp
+      - application/pdf
+      - text/plain
+      - text/csv
+      - application/zip
+      - application/msword
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - application/vnd.ms-excel
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - application/vnd.ms-powerpoint
+      - application/vnd.openxmlformats-officedocument.presentationml.presentation
 
 server:
   port: ${PORT:8080}
