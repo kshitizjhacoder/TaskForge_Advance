@@ -20,3 +20,6 @@ Thumbs.db
 
 # Uploaded files stored locally in development
 uploads/
+
+# Personal study notes (not part of the project)
+HOW_IT_WORKS.txt

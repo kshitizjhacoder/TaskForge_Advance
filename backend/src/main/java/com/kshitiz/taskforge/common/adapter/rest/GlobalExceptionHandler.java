@@ -6,6 +6,7 @@ import com.kshitiz.taskforge.common.exception.DuplicateResourceException;
 import com.kshitiz.taskforge.common.exception.ForbiddenOperationException;
 import com.kshitiz.taskforge.common.exception.InvalidRequestException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
+import com.kshitiz.taskforge.common.exception.StorageUnavailableException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -112,6 +113,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 ? ex.getMessage()
                 : "You do not have permission to perform this action.";
         return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, detail);
+    }
+
+    /**
+     * File storage (S3/MinIO) is unreachable → 503 Service Unavailable. The storage error is
+     * logged; the client only learns that it should retry later.
+     *
+     * @param ex the exception thrown by the storage adapter
+     * @return problem detail asking the client to retry later
+     */
+    @ExceptionHandler(StorageUnavailableException.class)
+    public ProblemDetail handleStorageUnavailable(StorageUnavailableException ex) {
+        log.error("File storage error", ex.getCause());
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
     /**

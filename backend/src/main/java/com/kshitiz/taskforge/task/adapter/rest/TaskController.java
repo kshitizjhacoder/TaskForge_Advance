@@ -64,17 +64,19 @@ public class TaskController {
     /**
      * Returns one task.
      *
-     * @param id task ID
-     * @return the task (404 if not found)
+     * @param id    task ID
+     * @param actor the logged-in user
+     * @return the task (404 if not found or not in one of the user's projects)
      */
     @GetMapping("/{id}")
     @Operation(summary = "Get a task by ID")
-    public TaskResponse getTask(@PathVariable UUID id) {
-        return taskService.getTask(id);
+    public TaskResponse getTask(@PathVariable UUID id, @AuthenticationPrincipal CurrentUser actor) {
+        return taskService.getTask(id, actor);
     }
 
     /**
-     * Searches tasks. Every filter is optional and they combine with AND.
+     * Searches tasks in the user's projects (all projects for admins). Every filter is
+     * optional and they combine with AND.
      *
      * @param q          text contained in the title
      * @param status     exact status
@@ -85,6 +87,7 @@ public class TaskController {
      * @param dueFrom    due on or after this date (yyyy-MM-dd)
      * @param dueTo      due on or before this date (yyyy-MM-dd)
      * @param pageParams page, size, sort (createdAt, updatedAt, title, endDate) and direction
+     * @param actor      the logged-in user
      * @return one page of tasks
      */
     @GetMapping
@@ -98,10 +101,11 @@ public class TaskController {
             @RequestParam(required = false) UUID assigneeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueTo,
-            @ParameterObject PageParams pageParams) {
-        TaskSearchCriteria criteria = new TaskSearchCriteria(q, status, priority, projectId, createdBy, assigneeId,
+            @ParameterObject PageParams pageParams,
+            @AuthenticationPrincipal CurrentUser actor) {
+        TaskSearchCriteria criteria = TaskSearchCriteria.of(q, status, priority, projectId, createdBy, assigneeId,
                 dueFrom, dueTo);
-        return taskService.searchTasks(criteria, pageParams.toPageQuery("createdAt"));
+        return taskService.searchTasks(criteria, pageParams.toPageQuery("createdAt"), actor);
     }
 
     /**

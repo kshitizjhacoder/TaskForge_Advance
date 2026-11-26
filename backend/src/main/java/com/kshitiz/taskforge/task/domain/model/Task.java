@@ -38,7 +38,7 @@ public class Task {
     public static final int MAX_TAG_LENGTH = 50;
 
     private final UUID id;
-    /** Project the task belongs to; optional until projects arrive in Phase 3. */
+    /** Project the task belongs to (required; never changes). */
     private final UUID projectId;
     private String title;
     private String description;
@@ -55,7 +55,7 @@ public class Task {
     /**
      * Creates a new task in status {@link TaskStatus#TO_DO}.
      *
-     * @param projectId   project ID (optional for now)
+     * @param projectId   project the task belongs to (required)
      * @param title       short summary of the work
      * @param description details (optional)
      * @param createdBy   ID of the user creating the task
@@ -69,6 +69,9 @@ public class Task {
     public static Task create(UUID projectId, String title, String description, UUID createdBy,
                               LocalDate startDate, LocalDate endDate, Priority priority, List<String> tags) {
         Objects.requireNonNull(createdBy, "createdBy");
+        if (projectId == null) {
+            throw new BusinessRuleViolationException("A task must belong to a project");
+        }
         validateDates(startDate, endDate);
         return new Task(UUID.randomUUID(), projectId, validateTitle(title), trimToNull(description), createdBy,
                 startDate, endDate, priority == null ? Priority.MEDIUM : priority, TaskStatus.TO_DO,

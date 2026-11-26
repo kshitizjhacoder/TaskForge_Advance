@@ -2,6 +2,7 @@ package com.kshitiz.taskforge.task.adapter.persistence;
 
 import com.kshitiz.taskforge.task.domain.model.Task;
 import com.kshitiz.taskforge.task.domain.model.TaskAssignment;
+import com.kshitiz.taskforge.task.domain.model.TaskAttachment;
 import com.kshitiz.taskforge.task.domain.model.TaskComment;
 import org.mapstruct.Mapper;
 
@@ -59,4 +60,20 @@ public interface TaskPersistenceMapper {
      * @return database row
      */
     TaskAssignmentJpaEntity toEntity(TaskAssignment assignment);
+
+    /**
+     * Rebuilds a domain attachment from a database row.
+     *
+     * @param entity database row
+     * @return domain attachment
+     */
+    TaskAttachment toDomain(TaskAttachmentJpaEntity entity);
+
+    /**
+     * Copies a domain attachment into a database row.
+     *
+     * @param attachment domain attachment
+     * @return database row
+     */
+    TaskAttachmentJpaEntity toEntity(TaskAttachment attachment);
 }

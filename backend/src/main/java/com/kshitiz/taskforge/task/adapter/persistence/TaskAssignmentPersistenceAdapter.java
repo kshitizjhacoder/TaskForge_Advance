@@ -46,9 +46,7 @@ public class TaskAssignmentPersistenceAdapter implements TaskAssignmentRepositor
 
     /** {@inheritDoc} */
     @Override
-    public List<TaskAssignment> findByUserId(UUID userId) {
-        return jpaRepository.findActiveByUserId(userId).stream()
-                .map(mapper::toDomain)
-                .toList();
+    public int deleteByProjectAndUser(UUID projectId, UUID userId) {
+        return jpaRepository.deleteByProjectAndUser(projectId, userId);
     }
 }

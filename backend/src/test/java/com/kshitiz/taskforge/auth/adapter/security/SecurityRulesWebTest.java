@@ -6,6 +6,8 @@ import com.kshitiz.taskforge.auth.application.dto.AuthResponse;
 import com.kshitiz.taskforge.auth.config.SecurityProperties;
 import com.kshitiz.taskforge.common.adapter.rest.ProblemDetailWriter;
 import com.kshitiz.taskforge.common.security.CurrentUser;
+import com.kshitiz.taskforge.project.adapter.rest.ProjectController;
+import com.kshitiz.taskforge.project.application.ProjectService;
 import com.kshitiz.taskforge.task.adapter.rest.TaskController;
 import com.kshitiz.taskforge.task.application.TaskService;
 import com.kshitiz.taskforge.task.application.dto.TaskResponse;
@@ -46,7 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * security) with mocked services. Starts only the web layer, so it needs no database or
  * Docker and runs in a few seconds.
  */
-@WebMvcTest(controllers = {AuthController.class, UserController.class, TaskController.class})
+@WebMvcTest(controllers = {AuthController.class, UserController.class, TaskController.class,
+        ProjectController.class})
 @Import({SecurityConfig.class, JwtTokenProvider.class, ProblemDetailWriter.class})
 @EnableConfigurationProperties(SecurityProperties.class)
 @ActiveProfiles("test")
@@ -63,6 +66,8 @@ class SecurityRulesWebTest {
     private UserService userService;
     @MockitoBean
     private TaskService taskService;
+    @MockitoBean
+    private ProjectService projectService;
 
     private final CurrentUser member = new CurrentUser(UUID.randomUUID(), "member@test.dev", Role.MEMBER);
     private final CurrentUser admin = new CurrentUser(UUID.randomUUID(), "admin@test.dev", Role.ADMIN);
@@ -141,14 +146,33 @@ class SecurityRulesWebTest {
 
     @Test
     void createTaskUsesTheLoggedInUserAsCreator() throws Exception {
-        when(taskService.createTask(any(), eq(member))).thenReturn(new TaskResponse(UUID.randomUUID(), null, "T",
-                null, member.id(), null, null, Priority.MEDIUM, TaskStatus.TO_DO, List.of(), Instant.now(),
+        UUID projectId = UUID.randomUUID();
+        when(taskService.createTask(any(), eq(member))).thenReturn(new TaskResponse(UUID.randomUUID(), projectId,
+                "T", null, member.id(), null, null, Priority.MEDIUM, TaskStatus.TO_DO, List.of(), Instant.now(),
                 Instant.now(), 0L));
 
         mockMvc.perform(post("/api/tasks").header(HttpHeaders.AUTHORIZATION, bearer(member))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"title\": \"T\"}"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\": \"T\", \"projectId\": \"%s\"}".formatted(projectId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.createdBy").value(member.id().toString()));
         verify(taskService).createTask(any(), eq(member));
+    }
+
+    @Test
+    void createTaskWithoutProjectIsABadRequest() throws Exception {
+        mockMvc.perform(post("/api/tasks").header(HttpHeaders.AUTHORIZATION, bearer(member))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"title\": \"T\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.projectId").exists());
+        verifyNoInteractions(taskService);
+    }
+
+    @Test
+    void membersCannotCreateProjects() throws Exception {
+        mockMvc.perform(post("/api/projects").header(HttpHeaders.AUTHORIZATION, bearer(member))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"key\": \"TF\", \"name\": \"TaskForge\"}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(projectService);
     }
 }

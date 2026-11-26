@@ -46,10 +46,11 @@ public interface TaskAssignmentRepository {
     List<TaskAssignment> findByTaskId(UUID taskId);
 
     /**
-     * Lists the tasks a user is assigned to, newest assignment first.
+     * Removes a user from every task of a project. Used when the user leaves the project.
      *
-     * @param userId user ID
-     * @return assignments
+     * @param projectId project ID
+     * @param userId    user ID
+     * @return number of assignments removed
      */
-    List<TaskAssignment> findByUserId(UUID userId);
+    int deleteByProjectAndUser(UUID projectId, UUID userId);
 }

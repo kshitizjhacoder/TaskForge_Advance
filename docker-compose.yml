@@ -1,0 +1,39 @@
+# Local development services: MySQL and MinIO (S3-compatible file storage).
+# Start with:  docker compose up -d
+# Then run the backend with the default "dev" profile; it already points at these.
+# All credentials below are local-only development defaults.
+# (The backend and frontend containers are added in Phase 7.)
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: taskforge
+      MYSQL_USER: taskforge
+      MYSQL_PASSWORD: taskforge
+      MYSQL_ROOT_PASSWORD: taskforge-root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ptaskforge-root"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: taskforge
+      MINIO_ROOT_PASSWORD: taskforge-dev-secret
+    ports:
+      - "9000:9000"   # S3 API used by the backend
+      - "9001:9001"   # web console: http://localhost:9001
+    volumes:
+      - minio-data:/data
+
+volumes:
+  mysql-data:
+  minio-data:

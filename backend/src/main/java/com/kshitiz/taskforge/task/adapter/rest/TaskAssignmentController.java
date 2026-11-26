@@ -52,12 +52,14 @@ public class TaskAssignmentController {
      * Lists who is assigned to a task.
      *
      * @param taskId task ID
+     * @param actor  the logged-in user
      * @return assignments
      */
     @GetMapping("/api/tasks/{taskId}/assignees")
     @Operation(summary = "List a task's assignees")
-    public List<AssignmentResponse> listAssignees(@PathVariable UUID taskId) {
-        return assignmentService.listAssignees(taskId);
+    public List<AssignmentResponse> listAssignees(@PathVariable UUID taskId,
+                                                  @AuthenticationPrincipal CurrentUser actor) {
+        return assignmentService.listAssignees(taskId, actor);
     }
 
     /**
@@ -74,17 +76,5 @@ public class TaskAssignmentController {
                                              @AuthenticationPrincipal CurrentUser actor) {
         assignmentService.unassignUser(taskId, userId, actor);
         return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Lists the tasks a user is assigned to.
-     *
-     * @param userId user ID
-     * @return assignments
-     */
-    @GetMapping("/api/users/{userId}/assignments")
-    @Operation(summary = "List a user's task assignments")
-    public List<AssignmentResponse> listAssignmentsOfUser(@PathVariable UUID userId) {
-        return assignmentService.listAssignmentsOfUser(userId);
     }
 }

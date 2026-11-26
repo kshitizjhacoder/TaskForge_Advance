@@ -6,6 +6,8 @@ import com.kshitiz.taskforge.common.exception.ForbiddenOperationException;
 import com.kshitiz.taskforge.common.exception.InvalidRequestException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
 import com.kshitiz.taskforge.common.security.CurrentUser;
+import com.kshitiz.taskforge.project.application.ProjectService;
+import com.kshitiz.taskforge.project.domain.model.Project;
 import com.kshitiz.taskforge.task.application.dto.ChangeTaskStatusCommand;
 import com.kshitiz.taskforge.task.application.dto.CreateTaskCommand;
 import com.kshitiz.taskforge.task.application.dto.TaskResponse;
@@ -25,10 +27,9 @@ import java.util.UUID;
 /**
  * Use cases for tasks: create, read, search, edit, change status and delete.
  *
- * <p>Business rules (valid dates, allowed status moves, tag limits) live in the {@link Task}
- * domain object and permission rules in {@link TaskAccessPolicy}; this service loads data,
- * applies both, and saves. Methods that change data receive the logged-in user
- * ({@code actor}).
+ * <p>Every method first checks the user may see the task's project (member or admin, via
+ * {@link ProjectService}); task-level permissions then come from {@link TaskAccessPolicy}
+ * and business rules from the {@link Task} domain object.
  */
 @Slf4j
 @Service
@@ -38,47 +39,58 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final TaskAssignmentRepository assignmentRepository;
+    private final ProjectService projectService;
 
     /**
-     * Creates a task in status TO_DO, owned by the logged-in user.
+     * Creates a task in a project, owned by the logged-in user.
      *
-     * @param command validated request data
+     * @param command validated request data (including the project)
      * @param actor   the logged-in user, recorded as the creator
      * @return the created task
+     * @throws ResourceNotFoundException if the project does not exist or the user is not a member
      */
     @Transactional
     public TaskResponse createTask(CreateTaskCommand command, CurrentUser actor) {
+        projectService.requireAccessibleProject(command.projectId(), actor);
         Task task = Task.create(command.projectId(), command.title(), command.description(), actor.id(),
                 command.startDate(), command.endDate(), command.priority(), command.tags());
         Task saved = taskRepository.save(task);
-        log.info("User {} created task {}", actor.id(), saved.getId());
+        log.info("User {} created task {} in project {}", actor.id(), saved.getId(), saved.getProjectId());
         return TaskResponse.from(saved);
     }
 
     /**
      * Returns one task.
      *
-     * @param id task ID
+     * @param id    task ID
+     * @param actor the logged-in user
      * @return the task
-     * @throws ResourceNotFoundException if no such task exists
+     * @throws ResourceNotFoundException if the task does not exist or its project is not visible
      */
-    public TaskResponse getTask(UUID id) {
-        return TaskResponse.from(loadTask(id));
+    public TaskResponse getTask(UUID id, CurrentUser actor) {
+        return TaskResponse.from(loadAccessibleTask(id, actor).task());
     }
 
     /**
-     * Returns one page of tasks matching optional filters.
+     * Returns one page of tasks matching optional filters, limited to the projects the user
+     * belongs to (admins see all projects).
      *
-     * @param criteria  filters (status, priority, text, dates, ...)
+     * @param criteria  client filters (status, priority, text, dates, ...)
      * @param pageQuery page, size and sort
+     * @param actor     the logged-in user
      * @return matching tasks
-     * @throws InvalidRequestException if dueFrom is after dueTo
+     * @throws InvalidRequestException   if dueFrom is after dueTo
+     * @throws ResourceNotFoundException if filtering by a project the user cannot see
      */
-    public PageResult<TaskResponse> searchTasks(TaskSearchCriteria criteria, PageQuery pageQuery) {
+    public PageResult<TaskResponse> searchTasks(TaskSearchCriteria criteria, PageQuery pageQuery, CurrentUser actor) {
         if (criteria.dueFrom() != null && criteria.dueTo() != null && criteria.dueFrom().isAfter(criteria.dueTo())) {
             throw new InvalidRequestException("dueFrom must be on or before dueTo");
         }
-        return taskRepository.search(criteria, pageQuery).map(TaskResponse::from);
+        if (criteria.projectId() != null) {
+            projectService.requireAccessibleProject(criteria.projectId(), actor);
+        }
+        TaskSearchCriteria limited = criteria.limitedTo(projectService.visibleProjectIds(actor).orElse(null));
+        return taskRepository.search(limited, pageQuery).map(TaskResponse::from);
     }
 
     /**
@@ -88,12 +100,12 @@ public class TaskService {
      * @param command validated new details
      * @param actor   the logged-in user
      * @return the updated task
-     * @throws ResourceNotFoundException   if no such task exists
+     * @throws ResourceNotFoundException   if the task is not found or not visible
      * @throws ForbiddenOperationException if the user may not manage this task
      */
     @Transactional
     public TaskResponse updateTask(UUID id, UpdateTaskCommand command, CurrentUser actor) {
-        Task task = loadManageableTask(id, actor);
+        Task task = loadManageableTask(id, actor).task();
         task.updateDetails(command.title(), command.description(), command.startDate(), command.endDate(),
                 command.priority(), command.tags());
         return TaskResponse.from(taskRepository.save(task));
@@ -106,13 +118,15 @@ public class TaskService {
      * @param command the requested status
      * @param actor   the logged-in user
      * @return the updated task
-     * @throws ResourceNotFoundException   if no such task exists
-     * @throws ForbiddenOperationException if the user is not creator, assignee, manager or admin
+     * @throws ResourceNotFoundException   if the task is not found or not visible
+     * @throws ForbiddenOperationException if the user is not allowed to change the status
      */
     @Transactional
     public TaskResponse changeStatus(UUID id, ChangeTaskStatusCommand command, CurrentUser actor) {
-        Task task = loadTask(id);
-        TaskAccessPolicy.requireCanChangeStatus(task, actor, assignmentRepository.exists(id, actor.id()));
+        AccessibleTask accessible = loadAccessibleTask(id, actor);
+        Task task = accessible.task();
+        TaskAccessPolicy.requireCanChangeStatus(task, actor, assignmentRepository.exists(id, actor.id()),
+                accessible.isProjectOwner(actor));
         task.changeStatus(command.status());
         Task saved = taskRepository.save(task);
         log.info("User {} moved task {} to {}", actor.id(), id, saved.getStatus());
@@ -124,7 +138,7 @@ public class TaskService {
      *
      * @param id    task ID
      * @param actor the logged-in user
-     * @throws ResourceNotFoundException   if no such task exists
+     * @throws ResourceNotFoundException   if the task is not found or not visible
      * @throws ForbiddenOperationException if the user may not manage this task
      */
     @Transactional
@@ -135,40 +149,32 @@ public class TaskService {
     }
 
     /**
-     * Checks that a task exists. Used before attaching comments to a task.
-     *
-     * @param id task ID
-     * @throws ResourceNotFoundException if no such task exists
-     */
-    public void ensureTaskExists(UUID id) {
-        if (!taskRepository.existsById(id)) {
-            throw ResourceNotFoundException.of("Task", id);
-        }
-    }
-
-    /**
-     * Checks that a task exists and that the user may manage it (edit, delete, assign).
-     * Shared with {@link TaskAssignmentService} so the rule is applied the same way.
+     * Loads a task and checks the user may see its project. Shared with the comment,
+     * assignment and attachment services so every one of them applies the same check.
      *
      * @param id    task ID
      * @param actor the logged-in user
-     * @return the task
-     * @throws ResourceNotFoundException   if no such task exists
-     * @throws ForbiddenOperationException if the user may not manage it
+     * @return the task with its project
+     * @throws ResourceNotFoundException if the task does not exist or its project is not visible
      */
-    Task loadManageableTask(UUID id, CurrentUser actor) {
-        Task task = loadTask(id);
-        TaskAccessPolicy.requireCanManage(task, actor);
-        return task;
+    AccessibleTask loadAccessibleTask(UUID id, CurrentUser actor) {
+        Task task = taskRepository.findById(id).orElseThrow(() -> ResourceNotFoundException.of("Task", id));
+        Project project = projectService.requireAccessibleProject(task.getProjectId(), actor);
+        return new AccessibleTask(task, project);
     }
 
     /**
-     * Loads a task or throws 404.
+     * Loads a task and checks the user may manage it (edit, delete, assign).
      *
-     * @param id task ID
-     * @return the task
+     * @param id    task ID
+     * @param actor the logged-in user
+     * @return the task with its project
+     * @throws ResourceNotFoundException   if the task is not found or not visible
+     * @throws ForbiddenOperationException if the user may not manage it
      */
-    private Task loadTask(UUID id) {
-        return taskRepository.findById(id).orElseThrow(() -> ResourceNotFoundException.of("Task", id));
+    AccessibleTask loadManageableTask(UUID id, CurrentUser actor) {
+        AccessibleTask accessible = loadAccessibleTask(id, actor);
+        TaskAccessPolicy.requireCanManage(accessible.task(), actor, accessible.isProjectOwner(actor));
+        return accessible;
     }
 }

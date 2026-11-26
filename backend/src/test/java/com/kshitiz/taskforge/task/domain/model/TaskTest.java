@@ -22,12 +22,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TaskTest {
 
     private static final UUID CREATOR = UUID.randomUUID();
+    private static final UUID PROJECT = UUID.randomUUID();
     private static final LocalDate DEC_1 = LocalDate.of(2026, 12, 1);
     private static final LocalDate DEC_10 = LocalDate.of(2026, 12, 10);
 
     /** Creates a valid task with the given tags; other values are fixed. */
     private static Task newTask(List<String> tags) {
-        return Task.create(null, "  Write report  ", "  details ", CREATOR, DEC_1, DEC_10, null, tags);
+        return Task.create(PROJECT, "  Write report  ", "  details ", CREATOR, DEC_1, DEC_10, null, tags);
     }
 
     @Nested
@@ -46,15 +47,22 @@ class TaskTest {
         }
 
         @Test
+        void requiresAProject() {
+            assertThatThrownBy(() -> Task.create(null, "T", null, CREATOR, null, null, null, null))
+                    .isInstanceOf(BusinessRuleViolationException.class)
+                    .hasMessageContaining("project");
+        }
+
+        @Test
         void rejectsBlankTitle() {
-            assertThatThrownBy(() -> Task.create(null, "  ", null, CREATOR, null, null, null, null))
+            assertThatThrownBy(() -> Task.create(PROJECT, "  ", null, CREATOR, null, null, null, null))
                     .isInstanceOf(BusinessRuleViolationException.class)
                     .hasMessageContaining("Title");
         }
 
         @Test
         void rejectsEndDateBeforeStartDate() {
-            assertThatThrownBy(() -> Task.create(null, "T", null, CREATOR, DEC_10, DEC_1, null, null))
+            assertThatThrownBy(() -> Task.create(PROJECT, "T", null, CREATOR, DEC_10, DEC_1, null, null))
                     .isInstanceOf(BusinessRuleViolationException.class)
                     .hasMessageContaining("End date");
         }
