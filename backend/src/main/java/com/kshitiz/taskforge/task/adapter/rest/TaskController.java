@@ -6,6 +6,7 @@ import com.kshitiz.taskforge.common.domain.PageResult;
 import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.task.application.TaskService;
 import com.kshitiz.taskforge.task.application.dto.ChangeTaskStatusCommand;
+import com.kshitiz.taskforge.task.application.dto.CreateSubtasksCommand;
 import com.kshitiz.taskforge.task.application.dto.CreateTaskCommand;
 import com.kshitiz.taskforge.task.application.dto.TaskResponse;
 import com.kshitiz.taskforge.task.application.dto.UpdateTaskCommand;
@@ -18,6 +19,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -62,6 +65,22 @@ public class TaskController {
     }
 
     /**
+     * Creates several subtasks of a task at once (e.g. accepted AI suggestions).
+     *
+     * @param id      parent task ID
+     * @param command the subtasks (1–10)
+     * @param actor   the logged-in user (becomes the creator)
+     * @return 201 Created with the new subtasks (422 if the task is itself a subtask)
+     */
+    @PostMapping("/{id}/subtasks")
+    @Operation(summary = "Create several subtasks of a task")
+    public ResponseEntity<List<TaskResponse>> createSubtasks(@PathVariable UUID id,
+                                                             @Valid @RequestBody CreateSubtasksCommand command,
+                                                             @AuthenticationPrincipal CurrentUser actor) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createSubtasks(id, command, actor));
+    }
+
+    /**
      * Returns one task.
      *
      * @param id    task ID
@@ -82,6 +101,7 @@ public class TaskController {
      * @param status     exact status
      * @param priority   exact priority
      * @param projectId  project ID
+     * @param parentTaskId only subtasks of this task
      * @param createdBy  creator's user ID
      * @param assigneeId a user assigned to the task
      * @param dueFrom    due on or after this date (yyyy-MM-dd)
@@ -97,14 +117,15 @@ public class TaskController {
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) Priority priority,
             @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID parentTaskId,
             @RequestParam(required = false) UUID createdBy,
             @RequestParam(required = false) UUID assigneeId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dueTo,
             @ParameterObject PageParams pageParams,
             @AuthenticationPrincipal CurrentUser actor) {
-        TaskSearchCriteria criteria = TaskSearchCriteria.of(q, status, priority, projectId, createdBy, assigneeId,
-                dueFrom, dueTo);
+        TaskSearchCriteria criteria = TaskSearchCriteria.of(q, status, priority, projectId, parentTaskId, createdBy,
+                assigneeId, dueFrom, dueTo);
         return taskService.searchTasks(criteria, pageParams.toPageQuery("createdAt"), actor);
     }
 

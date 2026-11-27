@@ -31,6 +31,7 @@ final class TaskSpecifications {
                 Specs.equalTo("priority", criteria.priority()),
                 Specs.equalTo("projectId", criteria.projectId()),
                 Specs.in("projectId", criteria.visibleProjectIds()),
+                Specs.equalTo("parentTaskId", criteria.parentTaskId()),
                 Specs.equalTo("createdBy", criteria.createdBy()),
                 assignedTo(criteria.assigneeId()),
                 Specs.atLeast("endDate", criteria.dueFrom()),

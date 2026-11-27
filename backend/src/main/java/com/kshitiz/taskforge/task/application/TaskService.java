@@ -2,6 +2,7 @@ package com.kshitiz.taskforge.task.application;
 
 import com.kshitiz.taskforge.common.domain.PageQuery;
 import com.kshitiz.taskforge.common.domain.PageResult;
+import com.kshitiz.taskforge.common.exception.BusinessRuleViolationException;
 import com.kshitiz.taskforge.common.exception.ForbiddenOperationException;
 import com.kshitiz.taskforge.common.exception.InvalidRequestException;
 import com.kshitiz.taskforge.common.exception.ResourceNotFoundException;
@@ -9,6 +10,7 @@ import com.kshitiz.taskforge.common.security.CurrentUser;
 import com.kshitiz.taskforge.project.application.ProjectService;
 import com.kshitiz.taskforge.project.domain.model.Project;
 import com.kshitiz.taskforge.task.application.dto.ChangeTaskStatusCommand;
+import com.kshitiz.taskforge.task.application.dto.CreateSubtasksCommand;
 import com.kshitiz.taskforge.task.application.dto.CreateTaskCommand;
 import com.kshitiz.taskforge.task.application.dto.TaskResponse;
 import com.kshitiz.taskforge.task.application.dto.UpdateTaskCommand;
@@ -22,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -42,21 +45,57 @@ public class TaskService {
     private final ProjectService projectService;
 
     /**
-     * Creates a task in a project, owned by the logged-in user.
+     * Creates a task in a project, owned by the logged-in user. If a parent task is given,
+     * the new task is created as its subtask.
      *
-     * @param command validated request data (including the project)
+     * @param command validated request data (including the project and optional parent)
      * @param actor   the logged-in user, recorded as the creator
      * @return the created task
-     * @throws ResourceNotFoundException if the project does not exist or the user is not a member
+     * @throws ResourceNotFoundException      if the project or parent does not exist or is not visible
+     * @throws BusinessRuleViolationException if the parent is in another project or is itself a subtask
      */
     @Transactional
     public TaskResponse createTask(CreateTaskCommand command, CurrentUser actor) {
         projectService.requireAccessibleProject(command.projectId(), actor);
-        Task task = Task.create(command.projectId(), command.title(), command.description(), actor.id(),
-                command.startDate(), command.endDate(), command.priority(), command.tags());
+        Task task;
+        if (command.parentTaskId() == null) {
+            task = Task.create(command.projectId(), command.title(), command.description(), actor.id(),
+                    command.startDate(), command.endDate(), command.priority(), command.tags());
+        } else {
+            Task parent = loadAccessibleTask(command.parentTaskId(), actor).task();
+            if (!parent.getProjectId().equals(command.projectId())) {
+                throw new BusinessRuleViolationException("A subtask must be in the same project as its parent");
+            }
+            task = Task.createSubtask(parent, command.title(), command.description(), actor.id(),
+                    command.startDate(), command.endDate(), command.priority(), command.tags());
+        }
         Task saved = taskRepository.save(task);
         log.info("User {} created task {} in project {}", actor.id(), saved.getId(), saved.getProjectId());
         return TaskResponse.from(saved);
+    }
+
+    /**
+     * Creates several subtasks of a task in one go, for example the AI suggestions the user
+     * chose to keep. All are created or none (one transaction).
+     *
+     * @param parentTaskId the task being split up
+     * @param command      the subtasks to create
+     * @param actor        the logged-in user, recorded as the creator
+     * @return the created subtasks, in the order given
+     * @throws ResourceNotFoundException      if the parent is not found or not visible
+     * @throws BusinessRuleViolationException if the parent is itself a subtask
+     */
+    @Transactional
+    public List<TaskResponse> createSubtasks(UUID parentTaskId, CreateSubtasksCommand command, CurrentUser actor) {
+        Task parent = loadAccessibleTask(parentTaskId, actor).task();
+        List<TaskResponse> created = command.subtasks().stream()
+                .map(item -> Task.createSubtask(parent, item.title(), item.description(), actor.id(),
+                        null, null, item.priority(), null))
+                .map(taskRepository::save)
+                .map(TaskResponse::from)
+                .toList();
+        log.info("User {} created {} subtasks of task {}", actor.id(), created.size(), parentTaskId);
+        return created;
     }
 
     /**
@@ -134,7 +173,7 @@ public class TaskService {
     }
 
     /**
-     * Soft-deletes a task.
+     * Soft-deletes a task together with its subtasks.
      *
      * @param id    task ID
      * @param actor the logged-in user
@@ -144,6 +183,7 @@ public class TaskService {
     @Transactional
     public void deleteTask(UUID id, CurrentUser actor) {
         loadManageableTask(id, actor);
+        taskRepository.findSubtaskIds(id).forEach(taskRepository::deleteById);
         taskRepository.deleteById(id);
         log.info("User {} deleted task {}", actor.id(), id);
     }

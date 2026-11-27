@@ -39,8 +39,12 @@ import java.util.UUID;
 @SoftDelete(columnName = "deleted")
 public class TaskJpaEntity extends BaseJpaEntity {
 
-    @Column(name = "project_id")
+    @Column(name = "project_id", nullable = false, updatable = false)
     private UUID projectId;
+
+    /** Parent task for subtasks; {@code null} for top-level tasks. */
+    @Column(name = "parent_task_id", updatable = false)
+    private UUID parentTaskId;
 
     @Column(name = "title", length = 200, nullable = false)
     private String title;

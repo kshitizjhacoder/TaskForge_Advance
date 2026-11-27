@@ -35,6 +35,27 @@ spring:
   cache:
     cache-names: master-data
 
+  ai:
+    model:
+      # Which AI provider to use: google-genai (real Gemini), fake (canned answers for dev/tests)
+      # or none (AI features switched off). The same value selects TaskForge's AI adapter.
+      chat: ${AI_PROVIDER:none}
+    chat:
+      client:
+        # TaskForge builds its own ChatClient only when Gemini is enabled
+        enabled: false
+    google:
+      genai:
+        # Free key from Google AI Studio (create it WITHOUT billing so it can never charge you)
+        api-key: ${GEMINI_API_KEY:}
+        chat:
+          options:
+            model: ${GEMINI_MODEL:gemini-2.5-flash}
+            temperature: 0.3
+    retry:
+      # One retry for temporary errors (e.g. HTTP 503 from Gemini), then give up
+      max-attempts: 2
+
   servlet:
     multipart:
       # Hard limits for uploads; must be at least taskforge.attachments.max-file-size
@@ -93,6 +114,15 @@ taskforge:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
       - application/vnd.ms-powerpoint
       - application/vnd.openxmlformats-officedocument.presentationml.presentation
+
+  ai:
+    # Daily limits (UTC days). Keep the global limit below the Gemini free-tier daily quota.
+    user-daily-limit: 10
+    global-daily-limit: 200
+    # Give up waiting for the model after this long
+    timeout: 25s
+    # Most subtasks the AI may suggest for one task
+    max-suggestions: 8
 
 server:
   port: ${PORT:8080}

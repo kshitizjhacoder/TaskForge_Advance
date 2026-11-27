@@ -214,6 +214,63 @@ class TaskForgeApiIntegrationTest {
     }
 
     @Test
+    void aiBreakdownBecomesSubtasks() throws Exception {
+        // Admins can create projects, so the bootstrap admin sets one up and adds a member
+        Session admin = login("admin@test.dev", "admin12345");
+        Session dev = register("AI User");
+        String key = "A" + UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase(Locale.ROOT);
+        String projectId = json(mockMvc.perform(withToken(post("/api/projects"), admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"key\": \"%s\", \"name\": \"AI demo\"}".formatted(key)))
+                .andExpect(status().isCreated())).get("id").asText();
+        mockMvc.perform(withToken(post("/api/projects/{id}/members", projectId), admin)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"userId\": \"%s\"}".formatted(dev.userId()))).andExpect(status().isCreated());
+        String taskId = json(mockMvc.perform(withToken(post("/api/tasks"), dev).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"projectId\": \"%s\", \"title\": \"Launch website\"}".formatted(projectId)))
+                .andExpect(status().isCreated())).get("id").asText();
+
+        mockMvc.perform(withToken(get("/api/ai/status"), dev))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.provider").value("fake"))
+                .andExpect(jsonPath("$.remainingToday").value(3));
+
+        // The (fake) AI suggests subtasks; nothing is saved yet
+        mockMvc.perform(withToken(post("/api/tasks/{id}/ai/breakdown", taskId), dev))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suggestions.length()").value(4))
+                .andExpect(jsonPath("$.remainingToday").value(2));
+        mockMvc.perform(withToken(get("/api/tasks"), dev).param("parentTaskId", taskId))
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        // The user keeps two suggestions
+        String firstSubtaskId = json(mockMvc.perform(withToken(post("/api/tasks/{id}/subtasks", taskId), dev)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"subtasks": [{"title": "Design pages", "priority": "HIGH"},
+                                              {"title": "Deploy site"}]}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].parentTaskId").value(taskId))).get(0).get("id").asText();
+        mockMvc.perform(withToken(get("/api/tasks"), dev).param("parentTaskId", taskId))
+                .andExpect(jsonPath("$.totalElements").value(2));
+
+        // Subtasks cannot be split further
+        mockMvc.perform(withToken(post("/api/tasks/{id}/ai/breakdown", firstSubtaskId), dev))
+                .andExpect(status().isUnprocessableEntity());
+
+        // The daily limit (3 in tests) is enforced; the subtask attempt above was refused before counting
+        mockMvc.perform(withToken(post("/api/tasks/{id}/ai/breakdown", taskId), dev)).andExpect(status().isOk());
+        mockMvc.perform(withToken(post("/api/tasks/{id}/ai/breakdown", taskId), dev)).andExpect(status().isOk());
+        mockMvc.perform(withToken(post("/api/tasks/{id}/ai/breakdown", taskId), dev))
+                .andExpect(status().isTooManyRequests());
+
+        // Deleting the parent deletes its subtasks
+        mockMvc.perform(withToken(delete("/api/tasks/{id}", taskId), admin)).andExpect(status().isNoContent());
+        mockMvc.perform(withToken(get("/api/tasks/{id}", firstSubtaskId), dev)).andExpect(status().isNotFound());
+    }
+
+    @Test
     void registerValidationListsEachField() throws Exception {
         mockMvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fullName\": \"\", \"email\": \"not-an-email\", \"password\": \"short\"}"))

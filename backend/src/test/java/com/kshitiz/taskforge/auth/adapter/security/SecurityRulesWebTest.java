@@ -147,7 +147,7 @@ class SecurityRulesWebTest {
     @Test
     void createTaskUsesTheLoggedInUserAsCreator() throws Exception {
         UUID projectId = UUID.randomUUID();
-        when(taskService.createTask(any(), eq(member))).thenReturn(new TaskResponse(UUID.randomUUID(), projectId,
+        when(taskService.createTask(any(), eq(member))).thenReturn(new TaskResponse(UUID.randomUUID(), projectId, null,
                 "T", null, member.id(), null, null, Priority.MEDIUM, TaskStatus.TO_DO, List.of(), Instant.now(),
                 Instant.now(), 0L));
 

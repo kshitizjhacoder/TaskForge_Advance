@@ -5,6 +5,7 @@ import com.kshitiz.taskforge.common.domain.PageResult;
 import com.kshitiz.taskforge.task.domain.model.Task;
 import com.kshitiz.taskforge.task.domain.model.TaskSearchCriteria;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,6 +47,14 @@ public interface TaskRepository {
      * @return matching tasks
      */
     PageResult<Task> search(TaskSearchCriteria criteria, PageQuery pageQuery);
+
+    /**
+     * Lists the IDs of a task's (non-deleted) subtasks.
+     *
+     * @param parentTaskId parent task ID
+     * @return subtask IDs
+     */
+    List<UUID> findSubtaskIds(UUID parentTaskId);
 
     /**
      * Soft-deletes a task (the row is kept but hidden).

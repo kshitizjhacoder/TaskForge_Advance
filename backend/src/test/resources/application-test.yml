@@ -1,4 +1,10 @@
 # Settings used by tests (profile "test"). Values here are test-only and public.
+# Tests never call the real Gemini API.
+spring:
+  ai:
+    model:
+      chat: fake
+
 taskforge:
   security:
     jwt:
@@ -8,3 +14,7 @@ taskforge:
     bootstrap-admin:
       email: admin@test.dev
       password: admin12345
+  ai:
+    # Small limit so the integration test can reach it
+    user-daily-limit: 3
+    global-daily-limit: 1000
