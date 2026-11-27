@@ -5,7 +5,7 @@ with a live demo, screenshots and architecture diagram comes with v1.0.
 
 ## Tech stack (so far)
 Java 21 · Spring Boot 3.5 · Spring Security + JWT (jjwt) · Spring Data JPA · MySQL 8 · Flyway ·
-S3-compatible storage (AWS SDK v2, MinIO) · MapStruct · Lombok · Bucket4j · springdoc OpenAPI ·
+S3-compatible storage (AWS SDK v2, MinIO) · Spring AI + Google Gemini · MapStruct · Lombok · Bucket4j · springdoc OpenAPI ·
 JUnit 5 · Mockito · Testcontainers
 
 ## Architecture
@@ -18,7 +18,8 @@ com.kshitiz.taskforge
 ├── master/   master data (priorities, statuses, roles) served from DB tables
 ├── user/     users, roles and reporting lines
 ├── project/  projects and project membership
-└── task/     tasks, comments, assignments, attachments, permission policy
+├── task/     tasks, subtasks, comments, assignments, attachments, permission policy
+└── ai/       AI task breakdown (Gemini via Spring AI), usage limits, guardrails
     ├── domain/       business objects and rules (plain Java) + repository ports
     ├── application/  services (use cases, transactions) + request/response DTOs
     └── adapter/      REST controllers and JPA persistence
@@ -32,6 +33,15 @@ com.kshitiz.taskforge
   tags, filtered and paged search, comments, assignees (project members only).
 - **Attachments:** upload files to tasks (10 MB max, common document and image types), stored in
   S3-compatible storage and downloaded through the API after a permission check.
+- **Subtasks:** a task can be split into subtasks (one level), created one by one or in bulk.
+- **AI task breakdown:** `POST /api/tasks/{id}/ai/breakdown` asks Google Gemini (free tier) to
+  suggest subtasks. Nothing is saved until the user picks which to keep
+  (`POST /api/tasks/{id}/subtasks`). Guardrails: per-user and app-wide daily limits stored in the
+  database, prompt-injection defence, Gemini safety filters, JSON-only answers, output cleaning,
+  timeout and one retry. `GET /api/ai/status` tells the UI whether AI is on and how many requests
+  are left. Switch providers with `AI_PROVIDER` (`google-genai`, `fake`, `none`).
+  Only the task's text is sent to Google. On the free tier Google may use prompts to improve its
+  products, so don't put sensitive information in tasks you break down with AI.
 - **Master data:** priorities, statuses and roles for dropdowns at `GET /api/master`.
 
 ## Authentication
@@ -69,6 +79,8 @@ mvn spring-boot:run         # "dev" profile is the default
 
 The `dev` profile already points at the Docker services and supplies a development JWT secret
 and an admin account `admin@taskforge.local` / `admin12345`. Never use these outside your machine.
+It also uses the **fake** AI provider. To try real Gemini, set `AI_PROVIDER=google-genai` and
+`GEMINI_API_KEY` (create the key in Google AI Studio without billing).
 
 - Swagger UI: http://localhost:8080/swagger-ui.html (log in, then click **Authorize** and paste the access token)
 - Health: http://localhost:8080/actuator/health

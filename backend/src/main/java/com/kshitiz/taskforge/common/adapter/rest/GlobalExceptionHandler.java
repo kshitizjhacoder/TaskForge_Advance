@@ -1,5 +1,8 @@
 package com.kshitiz.taskforge.common.adapter.rest;
 
+import com.kshitiz.taskforge.common.exception.AiInvalidResponseException;
+import com.kshitiz.taskforge.common.exception.AiQuotaExceededException;
+import com.kshitiz.taskforge.common.exception.AiUnavailableException;
 import com.kshitiz.taskforge.common.exception.AuthenticationFailedException;
 import com.kshitiz.taskforge.common.exception.BusinessRuleViolationException;
 import com.kshitiz.taskforge.common.exception.DuplicateResourceException;
@@ -126,6 +129,42 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleStorageUnavailable(StorageUnavailableException ex) {
         log.error("File storage error", ex.getCause());
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    /**
+     * AI is switched off or the provider is unreachable → 503 Service Unavailable.
+     *
+     * @param ex the exception thrown by the AI adapter
+     * @return problem detail asking the client to try later
+     */
+    @ExceptionHandler(AiUnavailableException.class)
+    public ProblemDetail handleAiUnavailable(AiUnavailableException ex) {
+        if (ex.getCause() != null) {
+            log.warn("AI provider error: {}", ex.getCause().toString());
+        }
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    /**
+     * Today's AI allowance is used up → 429 Too Many Requests.
+     *
+     * @param ex the exception thrown by the AI quota check
+     * @return problem detail explaining the limit
+     */
+    @ExceptionHandler(AiQuotaExceededException.class)
+    public ProblemDetail handleAiQuota(AiQuotaExceededException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+    }
+
+    /**
+     * The AI answered with something unusable → 502 Bad Gateway.
+     *
+     * @param ex the exception thrown after validating the AI's answer
+     * @return problem detail with a generic message
+     */
+    @ExceptionHandler(AiInvalidResponseException.class)
+    public ProblemDetail handleAiInvalidResponse(AiInvalidResponseException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, ex.getMessage());
     }
 
     /**

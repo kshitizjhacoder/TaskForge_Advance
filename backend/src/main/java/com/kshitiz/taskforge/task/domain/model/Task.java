@@ -23,10 +23,13 @@ import java.util.UUID;
  *   <li>a title is required (max {@value #MAX_TITLE_LENGTH} characters);</li>
  *   <li>the end date cannot be before the start date;</li>
  *   <li>status changes must follow {@link TaskStatus#allowedNextStatuses()};</li>
- *   <li>tags are trimmed, lower-cased and de-duplicated (max {@value #MAX_TAGS}).</li>
+ *   <li>tags are trimmed, lower-cased and de-duplicated (max {@value #MAX_TAGS});</li>
+ *   <li>a task may have subtasks, one level deep: a subtask lives in its parent's project and
+ *       cannot have subtasks of its own.</li>
  * </ul>
- * New tasks are made with {@link #create}; tasks loaded from the database are rebuilt with
- * {@code Task.restore()...build()} (used only by the persistence mapper).
+ * New tasks are made with {@link #create} or {@link #createSubtask}; tasks loaded from the
+ * database are rebuilt with {@code Task.restore()...build()} (used only by the persistence
+ * mapper).
  */
 @Getter
 @Builder(builderMethodName = "restore")
@@ -40,6 +43,8 @@ public class Task {
     private final UUID id;
     /** Project the task belongs to (required; never changes). */
     private final UUID projectId;
+    /** The parent task if this is a subtask, otherwise {@code null}. */
+    private final UUID parentTaskId;
     private String title;
     private String description;
     private final UUID createdBy;
@@ -73,9 +78,46 @@ public class Task {
             throw new BusinessRuleViolationException("A task must belong to a project");
         }
         validateDates(startDate, endDate);
-        return new Task(UUID.randomUUID(), projectId, validateTitle(title), trimToNull(description), createdBy,
-                startDate, endDate, priority == null ? Priority.MEDIUM : priority, TaskStatus.TO_DO,
+        return new Task(UUID.randomUUID(), projectId, null, validateTitle(title), trimToNull(description),
+                createdBy, startDate, endDate, priority == null ? Priority.MEDIUM : priority, TaskStatus.TO_DO,
                 normalizeTags(tags), null, null, null);
+    }
+
+    /**
+     * Creates a subtask of {@code parent}, in the parent's project, in status TO_DO.
+     *
+     * @param parent      the task being split up
+     * @param title       short summary of the step
+     * @param description details (optional)
+     * @param createdBy   ID of the user creating the subtask
+     * @param startDate   planned start (optional)
+     * @param endDate     due date (optional)
+     * @param priority    urgency; MEDIUM if {@code null}
+     * @param tags        labels (optional)
+     * @return the new, not yet saved, subtask
+     * @throws BusinessRuleViolationException if the parent is itself a subtask or a rule is broken
+     */
+    public static Task createSubtask(Task parent, String title, String description, UUID createdBy,
+                                     LocalDate startDate, LocalDate endDate, Priority priority, List<String> tags) {
+        Objects.requireNonNull(parent, "parent");
+        Objects.requireNonNull(createdBy, "createdBy");
+        if (parent.isSubtask()) {
+            throw new BusinessRuleViolationException("Subtasks cannot have subtasks of their own");
+        }
+        validateDates(startDate, endDate);
+        return new Task(UUID.randomUUID(), parent.getProjectId(), parent.getId(), validateTitle(title),
+                trimToNull(description), createdBy, startDate, endDate,
+                priority == null ? Priority.MEDIUM : priority, TaskStatus.TO_DO, normalizeTags(tags),
+                null, null, null);
+    }
+
+    /**
+     * Checks whether this task is a subtask of another task.
+     *
+     * @return {@code true} if it has a parent
+     */
+    public boolean isSubtask() {
+        return parentTaskId != null;
     }
 
     /**

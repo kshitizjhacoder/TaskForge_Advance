@@ -9,6 +9,11 @@ spring:
   datasource:
     username: ${DB_USERNAME:taskforge}
     password: ${DB_PASSWORD:taskforge}
+  # Fake AI by default so the feature works without a Gemini key; set AI_PROVIDER=google-genai
+  # and GEMINI_API_KEY to try the real model.
+  ai:
+    model:
+      chat: ${AI_PROVIDER:fake}
 
 # Development-only defaults so the app starts without extra setup.
 # These values are public; NEVER use them outside a local machine.

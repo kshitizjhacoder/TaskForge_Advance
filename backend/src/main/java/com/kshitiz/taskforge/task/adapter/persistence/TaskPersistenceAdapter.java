@@ -9,6 +9,7 @@ import com.kshitiz.taskforge.task.domain.port.TaskRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -62,6 +63,12 @@ public class TaskPersistenceAdapter implements TaskRepository {
                 jpaRepository.findAll(TaskSpecifications.matching(criteria),
                         PageRequests.toPageable(pageQuery, SORTABLE_FIELDS)),
                 mapper::toDomain);
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public List<UUID> findSubtaskIds(UUID parentTaskId) {
+        return jpaRepository.findSubtaskIds(parentTaskId);
     }
 
     /** {@inheritDoc} */

@@ -83,6 +83,32 @@ class TaskTest {
     }
 
     @Nested
+    class Subtasks {
+
+        @Test
+        void subtaskInheritsProjectAndPointsToParent() {
+            Task parent = newTask(null);
+
+            Task subtask = Task.createSubtask(parent, "Step 1", null, CREATOR, null, null, null, null);
+
+            assertThat(subtask.getProjectId()).isEqualTo(PROJECT);
+            assertThat(subtask.getParentTaskId()).isEqualTo(parent.getId());
+            assertThat(subtask.isSubtask()).isTrue();
+            assertThat(subtask.getStatus()).isEqualTo(TaskStatus.TO_DO);
+            assertThat(parent.isSubtask()).isFalse();
+        }
+
+        @Test
+        void onlyOneLevelDeep() {
+            Task subtask = Task.createSubtask(newTask(null), "Step 1", null, CREATOR, null, null, null, null);
+
+            assertThatThrownBy(() -> Task.createSubtask(subtask, "Step 1.1", null, CREATOR, null, null, null, null))
+                    .isInstanceOf(BusinessRuleViolationException.class)
+                    .hasMessageContaining("Subtasks cannot have subtasks");
+        }
+    }
+
+    @Nested
     class ChangeStatus {
 
         @ParameterizedTest(name = "{0} -> {1} is allowed")
